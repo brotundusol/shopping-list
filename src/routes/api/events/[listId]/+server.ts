@@ -11,6 +11,8 @@ export const GET: RequestHandler = async ({ params }) => {
         Connection: 'keep-alive'
     });
 
+    let cleanup = () => { };
+
     const stream = new ReadableStream({
         start(controller) {
             // Send initial comment to keep connection alive
@@ -22,7 +24,10 @@ export const GET: RequestHandler = async ({ params }) => {
                     controller.enqueue(new TextEncoder().encode(`data: ${data}\n\n`));
                 } catch (err) {
                     console.error('SSE Error:', err);
-                    controller.close();
+                    // If we can't enqueue, the controller might be closed or errored.
+                    // We should probably stop listening.
+                    cleanup();
+                    try { controller.close(); } catch { }
                 }
             };
 
@@ -42,15 +47,15 @@ export const GET: RequestHandler = async ({ params }) => {
             store.on('itemToggled', onToggled);
             store.on('listCreated', onCreated);
 
-            // Cleanup when client disconnects
-            return () => {
+            // Assign cleanup function to be called on cancel
+            cleanup = () => {
                 store.off('itemAdded', onAdded);
                 store.off('itemToggled', onToggled);
                 store.off('listCreated', onCreated);
             };
         },
         cancel() {
-            // This is called if the stream is cancelled
+            cleanup();
         }
     });
 
